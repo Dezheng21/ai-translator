@@ -835,28 +835,29 @@ HTML = r"""<!doctype html>
     }
     .brand {
       display: flex;
-      gap: 12px;
+      gap: 18px;
       align-items: center;
     }
     .brand-title {
-      display: flex;
-      align-items: baseline;
-      gap: 10px;
+      display: block;
       white-space: nowrap;
     }
     .mark {
-      width: 34px;
-      height: 34px;
-      border-radius: 9px;
+      width: 54px;
+      height: 54px;
+      flex: 0 0 54px;
+      border-radius: 14px;
       background: linear-gradient(135deg, var(--teal), var(--blue));
+      box-shadow: 0 14px 26px rgba(47, 129, 247, 0.18);
     }
     h1, h2 {
       margin: 0;
       letter-spacing: 0;
     }
     h1 {
-      font-size: 22px;
-      line-height: 1.25;
+      font-size: 32px;
+      line-height: 1.05;
+      font-weight: 850;
       white-space: nowrap;
     }
     h2 { font-size: 17px; }
@@ -868,8 +869,11 @@ HTML = r"""<!doctype html>
     }
     .tagline {
       color: var(--muted);
-      font-size: 13px;
-      font-weight: 600;
+      display: block;
+      margin-top: 7px;
+      font-size: 18px;
+      line-height: 1.2;
+      font-weight: 750;
     }
     .wrap {
       width: min(1120px, 100%);
