@@ -835,7 +835,7 @@ HTML = r"""<!doctype html>
     }
     .brand {
       display: flex;
-      gap: 18px;
+      gap: 14px;
       align-items: center;
     }
     .brand-title {
@@ -843,19 +843,19 @@ HTML = r"""<!doctype html>
       white-space: nowrap;
     }
     .mark {
-      width: 54px;
-      height: 54px;
-      flex: 0 0 54px;
-      border-radius: 14px;
+      width: 42px;
+      height: 42px;
+      flex: 0 0 42px;
+      border-radius: 11px;
       background: linear-gradient(135deg, var(--teal), var(--blue));
-      box-shadow: 0 14px 26px rgba(47, 129, 247, 0.18);
+      box-shadow: 0 10px 20px rgba(47, 129, 247, 0.15);
     }
     h1, h2 {
       margin: 0;
       letter-spacing: 0;
     }
     h1 {
-      font-size: 32px;
+      font-size: 26px;
       line-height: 1.05;
       font-weight: 850;
       white-space: nowrap;
@@ -870,8 +870,8 @@ HTML = r"""<!doctype html>
     .tagline {
       color: var(--muted);
       display: block;
-      margin-top: 7px;
-      font-size: 18px;
+      margin-top: 5px;
+      font-size: 15px;
       line-height: 1.2;
       font-weight: 750;
     }
@@ -1541,6 +1541,7 @@ def build_config(data: dict) -> tuple[Path, Path, translate_ai.Config]:
         sleep=float(data.get("sleep") or 1.0),
         cache_dir=Path(str(data.get("cache_dir") or ".translate_cache").strip()),
         dry_run=bool(data.get("dry_run", False)),
+        generate_readable=True,
     )
     return input_path, output_path, cfg
 
