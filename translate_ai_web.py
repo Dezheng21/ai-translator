@@ -821,14 +821,14 @@ HTML = r"""<!doctype html>
     .shell {
       min-height: 100vh;
       display: grid;
-      grid-template-columns: clamp(260px, 18vw, 320px) minmax(0, 1fr);
+      grid-template-columns: 240px minmax(0, 1fr);
     }
     aside {
-      padding: 46px 30px;
+      padding: 36px 26px;
       background: #fbfcfa;
     }
     main {
-      padding: 92px 64px 78px 48px;
+      padding: 92px 96px 78px;
     }
     .brand {
       display: flex;
