@@ -838,6 +838,12 @@ HTML = r"""<!doctype html>
       gap: 12px;
       align-items: center;
     }
+    .brand-title {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      white-space: nowrap;
+    }
     .mark {
       width: 34px;
       height: 34px;
@@ -859,6 +865,11 @@ HTML = r"""<!doctype html>
       color: var(--muted);
       font-size: 14px;
       line-height: 1.55;
+    }
+    .tagline {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
     }
     .wrap {
       width: min(1120px, 100%);
@@ -1046,6 +1057,7 @@ HTML = r"""<!doctype html>
       aside { position: static; width: auto; }
       main { padding: 18px 16px 44px; }
       h1 { white-space: normal; }
+      .brand-title { align-items: flex-start; flex-direction: column; gap: 2px; }
       .field, .field.half { grid-column: 1 / -1; }
       .panel-head { flex-direction: column; }
       .actions { justify-content: flex-start; }
@@ -1058,8 +1070,10 @@ HTML = r"""<!doctype html>
       <div class="brand">
         <div class="mark"></div>
         <div>
-          <h1>AI 翻译工作台</h1>
-          <p class="sub">选文件，然后开始。</p>
+          <div class="brand-title">
+            <h1>AI 翻译工作台</h1>
+            <span class="tagline">选文件，然后开始。</span>
+          </div>
         </div>
       </div>
     </aside>
@@ -1069,12 +1083,9 @@ HTML = r"""<!doctype html>
           <div class="panel-head">
             <div>
               <h2>翻译任务</h2>
-              <p class="sub">默认自动处理 PDF、长文分块和术语匹配。</p>
             </div>
             <div class="actions">
-              <span class="pill">Local</span>
               <button class="primary" id="start_btn" onclick="startTask()">开始翻译</button>
-              <button onclick="openOutputFolder()">打开输出文件夹</button>
             </div>
           </div>
           <div class="panel-body">
@@ -1114,10 +1125,6 @@ HTML = r"""<!doctype html>
                 </select>
               </div>
               <div class="field half">
-                <label>模型</label>
-                <input id="model" />
-              </div>
-              <div class="field half">
                 <label>API Key</label>
                 <input id="api_key" type="password" placeholder="粘贴 key；可保存到本机" />
               </div>
@@ -1134,11 +1141,14 @@ HTML = r"""<!doctype html>
             <summary>
               <div>
                 <h2>高级设置</h2>
-                <p class="sub">通常不用改。只有自定义输出、术语表、扫描 PDF 或限流时再看这里。</p>
               </div>
             </summary>
             <div class="panel-body">
               <div class="grid">
+                <div class="field full">
+                  <label>模型</label>
+                  <input id="model" />
+                </div>
                 <div class="field full">
                   <label>输出文件</label>
                   <div class="path-row">
@@ -1197,6 +1207,7 @@ HTML = r"""<!doctype html>
                     <option>pdfplumber</option>
                     <option>pypdf</option>
                     <option>pdftotext</option>
+                    <option>tesseract</option>
                     <option>rapidocr</option>
                     <option>docling</option>
                     <option>marker</option>

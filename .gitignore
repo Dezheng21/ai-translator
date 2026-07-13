@@ -14,6 +14,7 @@ dictionaries/cedict_ts.u8
 
 # Local generated translation outputs
 *.zh.md
+*.zh.*.md
 *.zh2.md
 *.cleaned.md
 *.pdf_quality.md

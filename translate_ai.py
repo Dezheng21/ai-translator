@@ -352,6 +352,81 @@ def extract_pdf_with_marker(path: Path, _keep_page_markers: bool) -> tuple[str, 
         raise RuntimeError(last_error or "Marker conversion failed")
 
 
+def find_tesseract() -> str | None:
+    exe = shutil.which("tesseract")
+    if exe:
+        return exe
+    common_paths = [
+        Path(os.environ.get("ProgramFiles", "")) / "Tesseract-OCR" / "tesseract.exe",
+        Path(os.environ.get("ProgramFiles(x86)", "")) / "Tesseract-OCR" / "tesseract.exe",
+    ]
+    for path in common_paths:
+        if path.exists():
+            return str(path)
+    return None
+
+
+def extract_pdf_with_tesseract(path: Path, keep_page_markers: bool) -> tuple[str, int, list[int]]:
+    pdftoppm = shutil.which("pdftoppm")
+    if not pdftoppm:
+        raise RuntimeError("pdftoppm executable was not found; install Poppler first")
+    tesseract = find_tesseract()
+    if not tesseract:
+        raise RuntimeError("Tesseract was not found. Install UB-Mannheim Tesseract OCR first.")
+
+    page_count = get_pdf_page_count(path)
+    pages_text: list[str] = []
+    page_char_counts: list[int] = []
+
+    with tempfile.TemporaryDirectory(prefix="translator_tesseract_") as tmp:
+        prefix = Path(tmp) / "page"
+        subprocess.run(
+            [pdftoppm, "-png", "-r", "220", str(path), str(prefix)],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        images = sorted(Path(tmp).glob("page-*.png"))
+        if not images:
+            raise RuntimeError("PDF rendering for OCR did not produce page images")
+        if page_count <= 0:
+            page_count = len(images)
+
+        for index, image_path in enumerate(images, start=1):
+            print(f"OCR: tesseract page {index}/{len(images)}")
+            result = subprocess.run(
+                [tesseract, str(image_path), "stdout", "-l", "eng", "--psm", "6"],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            page_text = clean_tesseract_text(result.stdout.decode("utf-8", errors="replace"))
+            page_char_counts.append(page_plain_chars(page_text))
+            if keep_page_markers:
+                pages_text.append(f"<!-- Page {index} -->\n\n{page_text}")
+            else:
+                pages_text.append(page_text)
+
+    return "\n\n".join(pages_text), page_count, page_char_counts
+
+
+def clean_tesseract_text(text: str) -> str:
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"\n\s*\n+", "\n", text)
+    curly_right = "\u201d"
+    curly_apostrophe = "\u2019"
+    text = re.sub(
+        rf"\bNothing[{curly_right}\"]?\s+(?:A[{curly_apostrophe}']?|As)\s+the\b",
+        f"Nothing{curly_right}\n\nAs the",
+        text,
+    )
+    text = re.sub(rf"\bA[{curly_apostrophe}']?\s+the proliferation\b", "As the proliferation", text)
+    text = text.replace(f"Africa{curly_apostrophe}", "Africa")
+    text = re.sub(r"([\.!?])\s+[\u201c\u201d\"']\s+([A-Z])", r"\1 \2", text)
+    text = re.sub(r"\s+([\.,;:!?])", r"\1", text)
+    return text.strip()
+
+
 def ocr_page_text(result: list[Any]) -> str:
     if not result:
         return ""
@@ -663,6 +738,8 @@ def extract_pdf_text(path: Path, engine: str, keep_page_markers: bool, quality_m
                 text, page_count, page_char_counts = extract_pdf_with_docling(path, keep_page_markers)
             elif candidate == "marker":
                 text, page_count, page_char_counts = extract_pdf_with_marker(path, keep_page_markers)
+            elif candidate == "tesseract":
+                text, page_count, page_char_counts = extract_pdf_with_tesseract(path, keep_page_markers)
             elif candidate == "rapidocr":
                 text, page_count, page_char_counts = extract_pdf_with_rapidocr(path, keep_page_markers)
             else:
@@ -692,22 +769,29 @@ def extract_pdf_text(path: Path, engine: str, keep_page_markers: bool, quality_m
             peers = [peer for peer in extractions if peer.engine != extraction.engine]
             score_pdf_extraction(extraction, peers)
         if engine == "auto" and looks_like_ocr_needed(extractions):
-            print("PDF appears to be scanned/image-based; trying RapidOCR fallback.")
-            try:
-                text, page_count, page_char_counts = extract_pdf_with_rapidocr(path, keep_page_markers)
-                cleaned = clean_pdf_text(text)
-                plain_chars = len(re.sub(r"\s+", "", cleaned))
-                ocr_extraction = PdfExtraction(
-                    engine="rapidocr",
-                    raw_text=text,
-                    cleaned_text=cleaned,
-                    page_count=page_count,
-                    page_char_counts=page_char_counts,
-                    plain_chars=plain_chars,
-                )
-                extractions.append(ocr_extraction)
-            except Exception as exc:
-                errors.append(f"rapidocr: {exc}")
+            print("PDF appears to be scanned/image-based; trying OCR fallback.")
+            for ocr_engine, extractor in [
+                ("tesseract", extract_pdf_with_tesseract),
+                ("rapidocr", extract_pdf_with_rapidocr),
+            ]:
+                try:
+                    text, page_count, page_char_counts = extractor(path, keep_page_markers)
+                    cleaned = clean_pdf_text(text)
+                    plain_chars = len(re.sub(r"\s+", "", cleaned))
+                    extractions.append(
+                        PdfExtraction(
+                            engine=ocr_engine,
+                            raw_text=text,
+                            cleaned_text=cleaned,
+                            page_count=page_count,
+                            page_char_counts=page_char_counts,
+                            plain_chars=plain_chars,
+                        )
+                    )
+                    if plain_chars >= 500:
+                        break
+                except Exception as exc:
+                    errors.append(f"{ocr_engine}: {exc}")
         selected, report = choose_pdf_extraction(extractions, quality_mode)
         return selected.cleaned_text, report
     die(
@@ -861,6 +945,17 @@ SOCIAL_SCIENCE_KEYWORDS = {
     "social",
     "economic theory",
     "practice",
+    "globalization",
+    "war",
+    "structural adjustment",
+    "world bank",
+    "international monetary fund",
+    "imf",
+    "colonialism",
+    "imperialism",
+    "africa",
+    "humanitarian intervention",
+    "food aid",
 }
 
 
@@ -902,6 +997,10 @@ def dictionary_domain_score(entry: dict[str, Any], document_text: str) -> int:
         tech_hits = sum(1 for keyword in TECH_KEYWORDS if keyword in lower)
         social_hits = sum(1 for keyword in SOCIAL_SCIENCE_KEYWORDS if keyword in lower)
         return tech_hits - social_hits * 2
+    if domain == "social_science":
+        social_hits = sum(1 for keyword in SOCIAL_SCIENCE_KEYWORDS if keyword in lower)
+        tech_hits = sum(1 for keyword in TECH_KEYWORDS if keyword in lower)
+        return social_hits - tech_hits
     return 0
 
 
@@ -1033,6 +1132,9 @@ def build_prompt(
 4. 不要添加解释、摘要、前言或“以下是翻译”等额外文字。
 5. 人名、书名、机构名可保留原文；必要时在首次出现处给出自然译名。
 6. 如果原文已有目标语言内容，不要无意义改写。
+7. 除公认缩写、专名、书名和机构名外，不要保留未翻译的英文普通词；不确定时先给中文译名，必要时括注原文。
+8. 必须完整翻译当前分块，不要删节、概括、合并论点或跳过脚注附近的正文。
+9. 原文可能来自 OCR。请在不改变含义的前提下修复明显的 OCR 噪声、断行、断词、错位引号和孤立脚注符号。
 {glossary}
 {context}
 {chunk_label}
@@ -1257,7 +1359,7 @@ def cache_key(chunk: str, cfg: Config, document_context: str) -> str:
             "document_context": document_context,
             "glossary": cfg.glossary,
             "glossary_limit": cfg.glossary_limit,
-            "prompt_version": 2,
+            "prompt_version": 3,
             "chunk": chunk,
         },
         ensure_ascii=False,
@@ -1348,7 +1450,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--pdf-engine",
-        choices=["auto", "pdfplumber", "pypdf", "pdftotext", "pdftotext-raw", "rapidocr", "docling", "marker"],
+        choices=["auto", "pdfplumber", "pypdf", "pdftotext", "pdftotext-raw", "tesseract", "rapidocr", "docling", "marker"],
         default="auto",
         help="PDF text extraction engine",
     )

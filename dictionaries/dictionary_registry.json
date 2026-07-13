@@ -25,5 +25,14 @@
     "target": "en",
     "domain": "general",
     "enabled": true
+  },
+  {
+    "id": "political_economy_en_zh",
+    "name": "Political Economy / Globalization EN-ZH",
+    "file": "political_economy_en_zh.txt",
+    "source": "en",
+    "target": "zh",
+    "domain": "social_science",
+    "enabled": true
   }
 ]
