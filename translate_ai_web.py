@@ -820,15 +820,18 @@ HTML = r"""<!doctype html>
     }
     .shell {
       min-height: 100vh;
-      display: grid;
-      grid-template-columns: 240px minmax(0, 1fr);
+      position: relative;
     }
     aside {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 240px;
       padding: 36px 26px;
       background: #fbfcfa;
     }
     main {
-      padding: 92px 96px 78px;
+      padding: 92px clamp(32px, 8vw, 128px) 78px;
     }
     .brand {
       display: flex;
@@ -1038,8 +1041,9 @@ HTML = r"""<!doctype html>
     }
     .hidden { display: none !important; }
     @media (max-width: 900px) {
-      .shell { grid-template-columns: 1fr; }
+      .shell { display: block; }
       aside { padding: 24px 22px 8px; border-bottom: 0; }
+      aside { position: static; width: auto; }
       main { padding: 18px 16px 44px; }
       h1 { white-space: normal; }
       .field, .field.half { grid-column: 1 / -1; }
