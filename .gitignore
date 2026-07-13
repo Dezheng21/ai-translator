@@ -1,0 +1,19 @@
+# Local secrets and user settings
+.translator_settings.json
+
+# Runtime/cache output
+.translate_cache/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Large raw dictionary sources
+dictionaries/MicrosoftTermCollection/
+dictionaries/MicrosoftTermCollection.zip
+dictionaries/cedict_ts.u8
+
+# Local generated translation outputs
+*.zh.md
+*.zh2.md
+*.cleaned.md
+*.pdf_quality.md

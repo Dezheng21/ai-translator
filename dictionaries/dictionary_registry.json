@@ -1,0 +1,29 @@
+[
+  {
+    "id": "microsoft_zh_hans",
+    "name": "Microsoft Terminology Collection EN-ZH Hans",
+    "file": "microsoft_terminology_zh_hans.txt",
+    "source": "en",
+    "target": "zh",
+    "domain": "technology",
+    "enabled": true
+  },
+  {
+    "id": "microsoft_zh_hant",
+    "name": "Microsoft Terminology Collection EN-ZH Hant",
+    "file": "microsoft_terminology_zh_hant.txt",
+    "source": "en",
+    "target": "zh",
+    "domain": "technology",
+    "enabled": true
+  },
+  {
+    "id": "cc_cedict_zh_en",
+    "name": "CC-CEDICT ZH-EN",
+    "file": "cc_cedict_zh_en.txt",
+    "source": "zh",
+    "target": "en",
+    "domain": "general",
+    "enabled": true
+  }
+]
