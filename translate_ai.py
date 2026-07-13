@@ -15,6 +15,7 @@ API keys are read from environment variables. See tools/translate_ai_README.md.
 from __future__ import annotations
 
 import argparse
+import difflib
 import hashlib
 import json
 import os
@@ -81,6 +82,7 @@ class Config:
     sleep: float
     cache_dir: Path
     dry_run: bool
+    generate_readable: bool
 
 
 @dataclass
@@ -212,6 +214,229 @@ def polish_output_for_reading(text: str, keep_page_markers: bool) -> str:
         else:
             polished_blocks.extend(split_readable_paragraph(block, max_chars=850))
     return repair_punctuation_spacing("\n\n".join(polished_blocks)).strip() + "\n"
+
+
+ROMAN_LIST_NUMBERS = {
+    "i": 1,
+    "ii": 2,
+    "iii": 3,
+    "iv": 4,
+    "v": 5,
+    "vi": 6,
+    "vii": 7,
+    "viii": 8,
+    "ix": 9,
+    "x": 10,
+}
+
+
+def readable_output_path(path: Path) -> Path:
+    if path.name.endswith(".readable.md"):
+        return path
+    if path.suffix.lower() == ".md":
+        return path.with_name(path.stem + ".readable.md")
+    return path.with_name(path.name + ".readable.md")
+
+
+def plain_for_similarity(text: str) -> str:
+    text = re.sub(r"(?m)^\s{0,3}#{1,6}\s+", "", text)
+    text = re.sub(r"(?m)^\s{0,3}>\s?", "", text)
+    text = re.sub(r"(?m)^\s{0,3}(?:[-*+]|\d+\.)\s+", "", text)
+    text = re.sub(r"[*_`#>|-]", "", text)
+    return re.sub(r"\s+", "", text)
+
+
+def readable_change_is_safe(original: str, formatted: str) -> bool:
+    before = plain_for_similarity(original)
+    after = plain_for_similarity(formatted)
+    if not before or not after:
+        return False
+    length_ratio = len(after) / max(len(before), 1)
+    if not 0.94 <= length_ratio <= 1.06:
+        return False
+    return difflib.SequenceMatcher(None, before, after).ratio() >= 0.90
+
+
+def cleanup_readable_artifacts(text: str) -> str:
+    text = re.sub(r"\s*[!！]\s*[°º]\s*", "", text)
+    text = re.sub(r"(?:!\s*){2,}", "", text)
+    text = re.sub(r"(?<![A-Za-z])\s*[®°º]\s*(?![A-Za-z])", "", text)
+    text = re.sub(r"\s+([，。；：！？、,.!?;:])", r"\1", text)
+    text = re.sub(r"([。！？；：，、])\s+(?=[\u4e00-\u9fff“‘《（])", r"\1", text)
+    text = re.sub(r"\s+([¹²³⁴⁵⁶⁷⁸⁹⁰])", r"\1", text)
+    return text.strip()
+
+
+def join_sentence_text(current: str, sentence: str) -> str:
+    if not current:
+        return sentence
+    if re.search(r"[\u4e00-\u9fff。！？；：，、）】》”’]$", current):
+        return current + sentence
+    if re.match(r"^[\u4e00-\u9fff“‘《（]", sentence):
+        return current + sentence
+    return f"{current} {sentence}"
+
+
+def split_dense_paragraph(block: str, max_chars: int = 760) -> list[str]:
+    block = re.sub(r"\s+", " ", block).strip()
+    if len(block) <= max_chars:
+        return [block] if block else []
+    sentences = [part.strip() for part in re.split(r"(?<=[。！？；!?;])\s*", block) if part.strip()]
+    markers = (
+        "此外",
+        "因此",
+        "然而",
+        "事实上",
+        "换言之",
+        "首先",
+        "其次",
+        "最后",
+        "同样",
+        "这种",
+        "战争还",
+        "自那时起",
+        "相比之下",
+        "在此",
+        "正是",
+        "这表明",
+        "必须",
+    )
+    pieces: list[str] = []
+    current = ""
+    for sentence in sentences:
+        should_break = (
+            current
+            and len(current) >= 360
+            and (sentence.startswith(markers) or len(current) + len(sentence) > max_chars)
+        )
+        if should_break:
+            pieces.append(current.strip())
+            current = sentence
+        else:
+            current = join_sentence_text(current, sentence)
+    if current:
+        pieces.append(current.strip())
+    return pieces or [block]
+
+
+def split_bold_heading(block: str) -> list[str] | None:
+    match = re.match(r"^\*\*(.{2,80}?)\*\*(?:\s+(.+))?$", block, flags=re.S)
+    if not match:
+        return None
+    heading = match.group(1).strip()
+    rest = (match.group(2) or "").strip()
+    if not heading or len(heading) > 80:
+        return None
+    parts = [f"## {heading}"]
+    if rest:
+        parts.extend(split_dense_paragraph(cleanup_readable_artifacts(rest)))
+    return parts
+
+
+def split_title_block(block: str) -> list[str] | None:
+    match = re.match(r"^(.{2,90}?[\(（]\d{4}(?:年)?[\)）])\s+(.+)$", block, flags=re.S)
+    if not match:
+        return None
+    title = match.group(1).strip()
+    rest = cleanup_readable_artifacts(match.group(2).strip())
+    if len(title) > 90:
+        return None
+    parts = [f"# {title}"]
+    epigraphs = split_epigraphs(rest)
+    if epigraphs:
+        parts.extend(epigraphs)
+    elif rest:
+        parts.extend(split_dense_paragraph(rest))
+    return parts
+
+
+def split_epigraphs(text: str) -> list[str]:
+    if "\u2014\u2014" not in text:
+        return []
+    first_quote, remainder = text.split("\u2014\u2014", 1)
+    second_marker = remainder.find(" \u2014\u2014")
+    if second_marker < 0:
+        attribution = remainder.strip()
+        return format_blockquote(first_quote.strip(), attribution) if first_quote.strip() and attribution else []
+
+    first_attribution_and_next = remainder[:second_marker].strip()
+    second_attribution = remainder[second_marker + 3 :].strip()
+    first_attribution, second_quote = split_attribution_and_next_quote(first_attribution_and_next)
+    if not (first_quote.strip() and first_attribution and second_quote and second_attribution):
+        return []
+    return (
+        format_blockquote(first_quote.strip(), first_attribution)
+        + format_blockquote(second_quote, second_attribution)
+    )
+
+
+def split_attribution_and_next_quote(text: str) -> tuple[str, str]:
+    for token in ("》", ")", "）"):
+        pos = text.find(token)
+        if 0 <= pos <= 120 and pos + 1 < len(text):
+            return text[: pos + 1].strip(), text[pos + 1 :].strip()
+    parts = re.split(r"(?<=\S)\s+(?=[\u4e00-\u9fff])", text, maxsplit=1)
+    if len(parts) == 2:
+        return parts[0].strip(), parts[1].strip()
+    return "", ""
+
+
+def format_blockquote(quote: str, attribution: str) -> list[str]:
+    quote = cleanup_readable_artifacts(quote)
+    attribution = cleanup_readable_artifacts(attribution)
+    if not quote or not attribution:
+        return []
+    lines = [f"> {line.strip()}" for line in split_dense_paragraph(quote, max_chars=620)]
+    lines.append(">")
+    lines.append(f"> \u2014\u2014{attribution}")
+    return ["\n".join(lines)]
+
+
+def convert_roman_list(block: str) -> str | None:
+    match = re.match(r"^(i{1,3}|iv|v|vi{0,3}|ix|x)\.\s+(.+)$", block, flags=re.I | re.S)
+    if not match:
+        return None
+    number = ROMAN_LIST_NUMBERS.get(match.group(1).lower())
+    if not number:
+        return None
+    content = cleanup_readable_artifacts(match.group(2).strip())
+    return f"{number}. {content}"
+
+
+def format_markdown_for_reading(text: str) -> str:
+    original = text
+    text = cleanup_readable_artifacts(text.replace("\r\n", "\n").replace("\r", "\n"))
+    raw_blocks = [block.strip() for block in re.split(r"\n\s*\n", text) if block.strip()]
+    formatted: list[str] = []
+
+    for index, block in enumerate(raw_blocks):
+        if index == 0:
+            title_parts = split_title_block(block)
+            if title_parts:
+                formatted.extend(title_parts)
+                continue
+
+        heading_parts = split_bold_heading(block)
+        if heading_parts:
+            formatted.extend(heading_parts)
+            continue
+
+        roman_item = convert_roman_list(block)
+        if roman_item:
+            formatted.append(roman_item)
+            continue
+
+        if MARKDOWN_STRUCTURAL_RE.match(block):
+            formatted.append(block)
+            continue
+
+        formatted.extend(split_dense_paragraph(cleanup_readable_artifacts(block)))
+
+    result = re.sub(r"\n{3,}", "\n\n", "\n\n".join(part.strip() for part in formatted if part.strip())).strip() + "\n"
+    if not readable_change_is_safe(original, result):
+        print("Warning: readable formatting changed too much; keeping the original translation.")
+        return original.strip() + "\n"
+    return result
 
 
 def page_plain_chars(text: str) -> int:
@@ -1406,6 +1631,11 @@ def translate_file(input_path: Path, output_path: Path, cfg: Config) -> None:
     final_text = polish_output_for_reading("\n\n".join(results), cfg.keep_page_markers)
     write_text(output_path, final_text)
     print(f"Done: {output_path}")
+    if cfg.generate_readable:
+        readable_path = readable_output_path(output_path)
+        readable_text = format_markdown_for_reading(final_text)
+        write_text(readable_path, readable_text)
+        print(f"Readable: {readable_path}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -1480,6 +1710,16 @@ def parse_args() -> argparse.Namespace:
         help="Directory for translated chunk cache",
     )
     parser.add_argument("--dry-run", action="store_true", help="Do not call APIs; write chunk markers")
+    parser.add_argument(
+        "--no-readable-output",
+        action="store_true",
+        help="Do not write the additional .readable.md reading-friendly Markdown file",
+    )
+    parser.add_argument(
+        "--readable-only",
+        action="store_true",
+        help="Only format an existing Markdown/text translation into a reading-friendly .readable.md file",
+    )
     return parser.parse_args()
 
 
@@ -1487,6 +1727,12 @@ def main() -> None:
     args = parse_args()
     if not args.input.exists():
         die(f"input file not found: {args.input}")
+    if args.readable_only:
+        output = args.output or readable_output_path(args.input)
+        readable_text = format_markdown_for_reading(read_text(args.input))
+        write_text(output, readable_text)
+        print(f"Readable: {output}")
+        return
     provider = args.provider
     model = args.model or DEFAULT_MODELS[provider]
     output = args.output
@@ -1512,6 +1758,7 @@ def main() -> None:
         sleep=args.sleep,
         cache_dir=args.cache_dir,
         dry_run=args.dry_run,
+        generate_readable=not args.no_readable_output,
     )
     translate_file(args.input, output, cfg)
 
