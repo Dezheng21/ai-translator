@@ -1,10 +1,12 @@
 # AI 翻译工具桌面版
 
-双击 `启动AI翻译工具.bat` 即可打开图形界面。
+Windows 用户双击 `启动工具\Windows\启动AI翻译工具.bat` 即可打开图形界面。
 
-如果中文文件名启动器闪退，请双击 `start_ai_translator_modern.bat`。这个版本使用英文文件名和纯 ASCII 内容，更适合 Windows 批处理。
+如果中文文件名启动器闪退，请双击 `启动工具\Windows\start_ai_translator_modern.bat`。这个版本使用英文文件名和纯 ASCII 内容，更适合 Windows 批处理。
 
-如果你更想用旧版 Tkinter 窗口，可以双击 `start_ai_translator.bat`。
+如果你更想用旧版 Tkinter 窗口，可以双击 `启动工具\Windows\start_ai_translator.bat`。
+
+Mac 用户请进入 `启动工具/Mac`，双击 `启动AI翻译工具.command`，首次运行会自动安装依赖。详见 `启动工具/Mac/Mac使用说明.md`。
 
 ## 使用步骤
 

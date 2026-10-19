@@ -17,10 +17,13 @@ from __future__ import annotations
 import argparse
 import difflib
 import hashlib
+import http.client
 import json
 import os
 import re
 import shutil
+import socket
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -334,14 +337,21 @@ def split_bold_heading(block: str) -> list[str] | None:
 
 
 def split_title_block(block: str) -> list[str] | None:
-    match = re.match(r"^(.{2,90}?[\(（]\d{4}(?:年)?[\)）])\s+(.+)$", block, flags=re.S)
+    match = re.match(
+        r"^(.{2,120}?[\(\uff08]\d{4}(?:\u5e74)?[\)\uff09](?:[\(\uff08][^\(\)\uff08\uff09]{1,80}[\)\uff09])?)\s*(\[[^\]]{20,1200}\])?\s*(.*)$",
+        block,
+        flags=re.S,
+    )
     if not match:
         return None
     title = match.group(1).strip()
-    rest = cleanup_readable_artifacts(match.group(2).strip())
-    if len(title) > 90:
+    note = (match.group(2) or "").strip()
+    rest = cleanup_readable_artifacts((match.group(3) or "").strip())
+    if len(title) > 140:
         return None
     parts = [f"# {title}"]
+    if note:
+        parts.append(f"> {cleanup_readable_artifacts(note)}")
     epigraphs = split_epigraphs(rest)
     if epigraphs:
         parts.extend(epigraphs)
@@ -350,24 +360,84 @@ def split_title_block(block: str) -> list[str] | None:
     return parts
 
 
+def split_footnote_definitions(block: str) -> list[str] | None:
+    if not block.startswith("[^"):
+        return None
+
+    parts: list[str] = []
+    text = block.strip()
+    while text.startswith("[^"):
+        next_match = re.search(r"(?<!^)\[\^\d+\]:", text)
+        if next_match:
+            definition = text[: next_match.start()].strip()
+            text = text[next_match.start() :].strip()
+        else:
+            sentence_match = re.match(r"^(\[\^\d+\]:.*?[。.!?])(.+)$", text, flags=re.S)
+            if sentence_match:
+                definition = sentence_match.group(1).strip()
+                text = sentence_match.group(2).strip()
+            else:
+                definition = text
+                text = ""
+        if definition:
+            parts.append(definition)
+
+    if text:
+        parts.extend(split_dense_paragraph(cleanup_readable_artifacts(text)))
+    return parts or None
+
+
+def separate_inline_footnotes(text: str) -> str:
+    text = re.sub(r"(?<!\n)(\[\^\d+\]:)", r"\n\n\1", text)
+    text = re.sub(r"(\[\^\d+\]:[^\n]*?。)(?=[\u4e00-\u9fff])", r"\1\n\n", text)
+    return text
+
+
 def split_epigraphs(text: str) -> list[str]:
     if "\u2014\u2014" not in text:
         return []
     first_quote, remainder = text.split("\u2014\u2014", 1)
+    first_quote = first_quote.strip()
+    if not looks_like_epigraph_quote(first_quote):
+        return []
     second_marker = remainder.find(" \u2014\u2014")
     if second_marker < 0:
         attribution = remainder.strip()
-        return format_blockquote(first_quote.strip(), attribution) if first_quote.strip() and attribution else []
+        return format_blockquote(first_quote, attribution) if looks_like_epigraph_attribution(attribution) else []
 
     first_attribution_and_next = remainder[:second_marker].strip()
     second_attribution = remainder[second_marker + 3 :].strip()
     first_attribution, second_quote = split_attribution_and_next_quote(first_attribution_and_next)
-    if not (first_quote.strip() and first_attribution and second_quote and second_attribution):
+    if not (
+        looks_like_epigraph_attribution(first_attribution)
+        and looks_like_epigraph_quote(second_quote)
+        and looks_like_epigraph_attribution(second_attribution)
+    ):
         return []
     return (
-        format_blockquote(first_quote.strip(), first_attribution)
+        format_blockquote(first_quote, first_attribution)
         + format_blockquote(second_quote, second_attribution)
     )
+
+
+def looks_like_epigraph_quote(text: str) -> bool:
+    text = cleanup_readable_artifacts(text.strip())
+    if not text:
+        return False
+    # Real epigraphs are usually short. Long opening paragraphs often contain
+    # em dashes as punctuation, and should stay as normal body text.
+    return len(text) <= 500
+
+
+def looks_like_epigraph_attribution(text: str) -> bool:
+    text = cleanup_readable_artifacts(text.strip())
+    if not text or len(text) > 160:
+        return False
+    if re.search(r"[.!?;:]\s*\S", text):
+        return False
+    if re.search(r"[\u3002\uff01\uff1f\uff1b]\s*\S", text):
+        return False
+    return True
 
 
 def split_attribution_and_next_quote(text: str) -> tuple[str, str]:
@@ -405,7 +475,7 @@ def convert_roman_list(block: str) -> str | None:
 
 def format_markdown_for_reading(text: str) -> str:
     original = text
-    text = cleanup_readable_artifacts(text.replace("\r\n", "\n").replace("\r", "\n"))
+    text = separate_inline_footnotes(cleanup_readable_artifacts(text.replace("\r\n", "\n").replace("\r", "\n")))
     raw_blocks = [block.strip() for block in re.split(r"\n\s*\n", text) if block.strip()]
     formatted: list[str] = []
 
@@ -415,6 +485,11 @@ def format_markdown_for_reading(text: str) -> str:
             if title_parts:
                 formatted.extend(title_parts)
                 continue
+
+        footnote_parts = split_footnote_definitions(block)
+        if footnote_parts:
+            formatted.extend(footnote_parts)
+            continue
 
         heading_parts = split_bold_heading(block)
         if heading_parts:
@@ -1387,6 +1462,18 @@ def request_json(
 ) -> dict[str, Any]:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     last_error = None
+    transient_errors = (
+        urllib.error.URLError,
+        TimeoutError,
+        socket.timeout,
+        ConnectionError,
+        ConnectionResetError,
+        ConnectionAbortedError,
+        BrokenPipeError,
+        ssl.SSLError,
+        http.client.IncompleteRead,
+        http.client.RemoteDisconnected,
+    )
 
     for attempt in range(retries + 1):
         req = urllib.request.Request(url, data=body, headers=headers, method="POST")
@@ -1399,11 +1486,15 @@ def request_json(
             last_error = f"HTTP {exc.code}: {details[:1000]}"
             if exc.code not in {408, 409, 429, 500, 502, 503, 504}:
                 break
-        except (urllib.error.URLError, TimeoutError) as exc:
+        except json.JSONDecodeError as exc:
+            last_error = f"invalid JSON response: {exc}"
+        except transient_errors as exc:
             last_error = str(exc)
 
         if attempt < retries:
-            time.sleep(sleep * (2**attempt))
+            wait = max(sleep, 1.0) * (2**attempt)
+            print(f"Temporary API/network error, retrying {attempt + 1}/{retries} in {wait:.1f}s: {last_error}")
+            time.sleep(wait)
 
     die(f"request failed after {retries + 1} attempt(s): {last_error}")
 

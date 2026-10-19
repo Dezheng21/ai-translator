@@ -32,16 +32,17 @@ SETTINGS_PATH = Path(__file__).resolve().parent / ".translator_settings.json"
 
 def load_settings() -> dict:
     if not SETTINGS_PATH.exists():
-        return {"api_keys": {}, "base_url": "https://example.com/v1"}
+        return {"api_keys": {}, "base_url": "https://example.com/v1", "last_provider": "openai"}
     try:
         data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
-            return {"api_keys": {}, "base_url": "https://example.com/v1"}
+            return {"api_keys": {}, "base_url": "https://example.com/v1", "last_provider": "openai"}
         data.setdefault("api_keys", {})
         data.setdefault("base_url", "https://example.com/v1")
+        data.setdefault("last_provider", "openai")
         return data
     except Exception:
-        return {"api_keys": {}, "base_url": "https://example.com/v1"}
+        return {"api_keys": {}, "base_url": "https://example.com/v1", "last_provider": "openai"}
 
 
 def save_settings(settings: dict) -> None:
@@ -54,6 +55,7 @@ def save_settings(settings: dict) -> None:
 
 def save_api_key(provider: str, api_key: str, base_url: str = "") -> None:
     settings = load_settings()
+    settings["last_provider"] = provider
     api_keys = settings.setdefault("api_keys", {})
     if api_key:
         api_keys[provider] = api_key
@@ -66,6 +68,12 @@ def clear_api_key(provider: str) -> None:
     settings = load_settings()
     api_keys = settings.setdefault("api_keys", {})
     api_keys.pop(provider, None)
+    save_settings(settings)
+
+
+def save_last_provider(provider: str) -> None:
+    settings = load_settings()
+    settings["last_provider"] = provider
     save_settings(settings)
 
 
@@ -379,6 +387,17 @@ HTML = r"""<!doctype html>
       gap: 12px;
       color: var(--muted);
       font-size: 13px;
+    }
+    .friendly-log {
+      margin-top: 14px;
+      min-height: 44px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      background: #f8faf9;
+      border: 1px solid #e1e8e6;
+      color: #344054;
+      font-size: 14px;
+      line-height: 1.5;
     }
     .meter {
       height: 8px;
@@ -1041,6 +1060,17 @@ HTML = r"""<!doctype html>
       color: var(--muted);
       font-size: 13px;
     }
+    .friendly-log {
+      margin-top: 14px;
+      min-height: 44px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      background: #f8faf9;
+      border: 1px solid #e1e8e6;
+      color: #344054;
+      font-size: 14px;
+      line-height: 1.5;
+    }
     .meter {
       height: 8px;
       border-radius: 999px;
@@ -1118,25 +1148,34 @@ HTML = r"""<!doctype html>
                 <label>目标语言</label>
                 <input id="target_lang" value="简体中文" />
               </div>
-              <div class="field">
-                <label>供应商</label>
-                <select id="provider" onchange="providerChanged()">
-                  <option>openai</option>
-                  <option>anthropic</option>
-                  <option>gemini</option>
-                  <option>deepseek</option>
-                  <option>openai-compatible</option>
-                </select>
-              </div>
-              <div class="field half">
-                <label>API Key</label>
-                <input id="api_key" type="password" placeholder="粘贴 key；可保存到本机" />
-              </div>
-              <div class="field full switch">
-                <input id="remember_api_key" type="checkbox" />
-                <span>记住 API Key（只保存在本机）</span>
-              </div>
             </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>运行进度</h2>
+              <p class="sub" id="status">等待开始</p>
+            </div>
+            <span id="done_text">Idle</span>
+          </div>
+          <div class="panel-body">
+            <div class="status" style="margin-top: 0;">
+              <div class="meter"><div class="bar" id="bar"></div></div>
+            </div>
+            <div id="friendly_log" class="friendly-log">还没有开始。选好文件后点击“开始翻译”。</div>
+            <details style="margin-top: 14px;">
+              <summary style="padding: 0;">
+                <div>
+                  <h2 style="font-size: 14px;">命令日志</h2>
+                  <p class="sub">一般不用看；出错时展开这里查看技术细节。</p>
+                </div>
+              </summary>
+              <div style="padding-top: 12px;">
+              <div id="log"></div>
+              </div>
+            </details>
           </div>
         </section>
 
@@ -1149,9 +1188,34 @@ HTML = r"""<!doctype html>
             </summary>
             <div class="panel-body">
               <div class="grid">
-                <div class="field full">
+                <div class="field">
+                  <label>API 供应商</label>
+                  <select id="provider" onchange="providerChanged()">
+                    <option>openai</option>
+                    <option>anthropic</option>
+                    <option>gemini</option>
+                    <option>deepseek</option>
+                    <option>openai-compatible</option>
+                  </select>
+                </div>
+                <div class="field">
                   <label>模型</label>
                   <input id="model" />
+                </div>
+                <div class="field full">
+                  <label>API Key</label>
+                  <input id="api_key" type="password" placeholder="粘贴 key；可保存到本机" />
+                </div>
+                <div class="field full switch">
+                  <input id="remember_api_key" type="checkbox" />
+                  <span>记住 API Key（只保存在本机）</span>
+                </div>
+                <div class="field full">
+                  <label>OpenAI-compatible Base URL</label>
+                  <input id="base_url" value="https://example.com/v1" />
+                </div>
+                <div class="field half">
+                  <button onclick="clearSavedApiKey()" type="button">清除当前供应商 Key</button>
                 </div>
                 <div class="field full">
                   <label>输出文件</label>
@@ -1198,10 +1262,6 @@ HTML = r"""<!doctype html>
                     <option value="publishable">出版级</option>
                     <option value="fast">快速</option>
                   </select>
-                </div>
-                <div class="field full">
-                  <label>OpenAI-compatible Base URL</label>
-                  <input id="base_url" value="https://example.com/v1" />
                 </div>
                 <div class="field">
                   <label>PDF 读取方式</label>
@@ -1261,40 +1321,11 @@ HTML = r"""<!doctype html>
                   </div>
                 </div>
                 <div class="field half">
-                  <button onclick="clearSavedApiKey()" type="button">清除当前供应商 Key</button>
-                </div>
-                <div class="field half">
                   <button class="danger" onclick="clearLog()" type="button">清空日志</button>
                 </div>
               </div>
             </div>
           </details>
-        </section>
-
-        <section class="panel">
-          <div class="panel-head">
-            <div>
-              <h2>运行进度</h2>
-              <p class="sub" id="status">等待开始</p>
-            </div>
-            <span id="done_text">Idle</span>
-          </div>
-          <div class="panel-body">
-            <div class="status" style="margin-top: 0;">
-              <div class="meter"><div class="bar" id="bar"></div></div>
-            </div>
-            <details style="margin-top: 14px;">
-              <summary style="padding: 0;">
-                <div>
-                  <h2 style="font-size: 14px;">详细日志</h2>
-                  <p class="sub">展开查看命令输出和错误信息。</p>
-                </div>
-              </summary>
-              <div style="padding-top: 12px;">
-              <div id="log"></div>
-              </div>
-            </details>
-          </div>
         </section>
       </div>
     </main>
@@ -1304,12 +1335,14 @@ HTML = r"""<!doctype html>
     const defaults = __DEFAULTS__;
     let logIndex = 0;
     let polling = false;
+    let translateTotal = 0;
 
-    document.getElementById("model").value = defaults.models.openai;
     document.getElementById("cache_dir").value = defaults.cache_dir;
     document.getElementById("base_url").value = defaults.saved_base_url || "https://example.com/v1";
     document.getElementById("remember_api_key").checked = true;
-    document.getElementById("api_key").value = (defaults.saved_api_keys && defaults.saved_api_keys.openai) || "";
+    const initialProvider = defaults.last_provider || "openai";
+    document.getElementById("provider").value = defaults.models[initialProvider] ? initialProvider : "openai";
+    providerChanged();
     applyPreset();
 
     function providerChanged() {
@@ -1395,6 +1428,7 @@ HTML = r"""<!doctype html>
     }
 
     async function startTask() {
+      resetProgressForNewTask();
       const body = {
         input_path: formValue("input_path"),
         output_path: formValue("output_path"),
@@ -1428,6 +1462,7 @@ HTML = r"""<!doctype html>
       const data = await res.json();
       if (!data.ok) {
         appendLog("启动失败：" + data.error + "\n");
+        setFriendlyLog("启动失败：" + data.error);
         document.getElementById("start_btn").disabled = false;
         return;
       }
@@ -1445,6 +1480,11 @@ HTML = r"""<!doctype html>
         document.getElementById("status").textContent = data.ok ? "完成" : "失败";
         document.getElementById("done_text").textContent = data.ok ? "Done" : "Error";
         document.getElementById("bar").style.width = data.ok ? "100%" : "55%";
+        if (data.ok) {
+          setFriendlyLog("翻译完成。已保存译文，并在需要时生成阅读版。");
+        } else {
+          setFriendlyLog("任务失败。可以展开“命令日志”查看具体原因。");
+        }
         polling = false;
         return;
       }
@@ -1455,9 +1495,82 @@ HTML = r"""<!doctype html>
       const log = document.getElementById("log");
       log.textContent += text;
       log.scrollTop = log.scrollHeight;
+      updateFriendlyProgress(text);
     }
-    function clearLog() {
+    function clearLog(message = "日志已清空。") {
       document.getElementById("log").textContent = "";
+      logIndex = 0;
+      translateTotal = 0;
+      setFriendlyLog(message);
+    }
+    function resetProgressForNewTask() {
+      clearLog("已开始新任务，正在准备文件。");
+      document.getElementById("bar").style.width = "0%";
+      document.getElementById("status").textContent = "准备中";
+      document.getElementById("done_text").textContent = "Running";
+    }
+    function setFriendlyLog(text) {
+      document.getElementById("friendly_log").textContent = text;
+    }
+    function updateFriendlyProgress(text) {
+      const lines = String(text).split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+      for (const line of lines) {
+        const message = friendlyMessage(line);
+        if (message) setFriendlyLog(message);
+        const ocr = line.match(/OCR:\s+\S+\s+page\s+(\d+)\/(\d+)/i);
+        if (ocr) {
+          const done = Number(ocr[1]);
+          const total = Math.max(Number(ocr[2]), 1);
+          document.getElementById("bar").style.width = Math.min(45, 10 + Math.round(done / total * 35)) + "%";
+        }
+        const chunk = line.match(/\[(\d+)\/(\d+)\]\s+translating/i);
+        if (chunk) {
+          const done = Number(chunk[1]);
+          translateTotal = Math.max(Number(chunk[2]), 1);
+          document.getElementById("bar").style.width = Math.min(94, 45 + Math.round(done / translateTotal * 49)) + "%";
+        }
+      }
+    }
+    function friendlyMessage(line) {
+      let match = line.match(/^PDF extraction:\s*([^,]+).*pages=(\d+).*chars=(\d+)/i);
+      if (match) {
+        return "正在读取 PDF 文本：" + match[1] + " 已检查 " + match[2] + " 页。";
+      }
+      match = line.match(/OCR:\s+(\S+)\s+page\s+(\d+)\/(\d+)/i);
+      if (match) {
+        return "扫描版 PDF 正在 OCR 识别：" + match[2] + " / " + match[3] + " 页。";
+      }
+      match = line.match(/^Provider:\s*([^|]+)\|\s*Model:\s*(.+)$/i);
+      if (match) {
+        return "已连接 " + match[1].trim() + "，准备调用模型 " + match[2].trim() + "。";
+      }
+      match = line.match(/^Chunks:\s*(\d+)/i);
+      if (match) {
+        return "长文已自动分成 " + match[1] + " 段，正在逐段翻译。";
+      }
+      match = line.match(/\[(\d+)\/(\d+)\]\s+translating/i);
+      if (match) {
+        return "正在翻译第 " + match[1] + " / " + match[2] + " 段。";
+      }
+      if (/Auto glossary enabled/i.test(line)) {
+        return "已自动匹配内置术语表。";
+      }
+      if (/Temporary API\/network error/i.test(line)) {
+        return "API 连接不稳定，正在自动重试。";
+      }
+      if (/PDF appears to need OCR|OCR-needed|scanned/i.test(line)) {
+        return "检测到扫描版 PDF，正在切换到 OCR 识别。";
+      }
+      if (/Readable:/i.test(line)) {
+        return "已生成阅读版 Markdown，正在收尾。";
+      }
+      if (/Done:/i.test(line)) {
+        return "翻译完成，文件已保存。";
+      }
+      if (/Error:|运行失败|启动失败/i.test(line)) {
+        return "任务遇到错误。可以展开“命令日志”查看细节。";
+      }
+      return "";
     }
     async function openOutputFolder() {
       await fetch("/api/open-output-folder", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({path: formValue("output_path")})});
@@ -1515,6 +1628,7 @@ def build_config(data: dict) -> tuple[Path, Path, translate_ai.Config]:
     api_key = str(data.get("api_key", "")).strip() or str(saved_api_keys.get(provider, "")).strip()
     base_url = str(data.get("base_url", "")).strip() or str(settings.get("base_url", "")).strip()
     remember_api_key = bool(data.get("remember_api_key", False))
+    save_last_provider(provider)
     if api_key:
         os.environ[PROVIDER_KEY_ENV[provider]] = api_key
     if remember_api_key and api_key:
@@ -1593,6 +1707,7 @@ class Handler(BaseHTTPRequestHandler):
                 "cache_dir": str(base_dir / ".translate_cache"),
                 "saved_api_keys": load_settings().get("api_keys", {}),
                 "saved_base_url": load_settings().get("base_url", "https://example.com/v1"),
+                "last_provider": load_settings().get("last_provider", "openai"),
                 "builtin_glossaries": {
                     "zh_hans": str(zh_hans_glossary) if zh_hans_glossary.exists() else "",
                     "zh_hant": str(zh_hant_glossary) if zh_hant_glossary.exists() else "",
@@ -1634,6 +1749,8 @@ class Handler(BaseHTTPRequestHandler):
                 STATE.done = False
                 STATE.ok = False
                 STATE.running = True
+                while not STATE.log_queue.empty():
+                    STATE.log_queue.get_nowait()
             try:
                 input_path, output_path, cfg = build_config(self.read_json())
                 thread = threading.Thread(target=run_task, args=(input_path, output_path, cfg), daemon=True)

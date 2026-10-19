@@ -13,29 +13,29 @@
 ## 基本用法
 
 ```powershell
-python .\tools\translate_ai.py .\input.md -o .\output.zh.md
+python .\translate_ai.py .\input.md -o .\output.zh.md
 ```
 
 指定供应商和模型：
 
 ```powershell
 $env:OPENAI_API_KEY="你的 key"
-python .\tools\translate_ai.py .\input.md -o .\output.zh.md --provider openai --model gpt-5.6-luna
+python .\translate_ai.py .\input.md -o .\output.zh.md --provider openai --model gpt-5.6-luna
 ```
 
 ```powershell
 $env:ANTHROPIC_API_KEY="你的 key"
-python .\tools\translate_ai.py .\input.md -o .\output.zh.md --provider anthropic --model claude-sonnet-4-5
+python .\translate_ai.py .\input.md -o .\output.zh.md --provider anthropic --model claude-sonnet-4-5
 ```
 
 ```powershell
 $env:GEMINI_API_KEY="你的 key"
-python .\tools\translate_ai.py .\input.md -o .\output.zh.md --provider gemini --model gemini-3.5-flash
+python .\translate_ai.py .\input.md -o .\output.zh.md --provider gemini --model gemini-3.5-flash
 ```
 
 ```powershell
 $env:DEEPSEEK_API_KEY="你的 key"
-python .\tools\translate_ai.py .\input.md -o .\output.zh.md --provider deepseek --model deepseek-chat
+python .\translate_ai.py .\input.md -o .\output.zh.md --provider deepseek --model deepseek-chat
 ```
 
 兼容 OpenAI 的第三方接口：
@@ -43,16 +43,16 @@ python .\tools\translate_ai.py .\input.md -o .\output.zh.md --provider deepseek 
 ```powershell
 $env:OPENAI_COMPATIBLE_API_KEY="你的 key"
 $env:OPENAI_COMPATIBLE_BASE_URL="https://example.com/v1"
-python .\tools\translate_ai.py .\input.md -o .\output.zh.md --provider openai-compatible --model your-model-name
+python .\translate_ai.py .\input.md -o .\output.zh.md --provider openai-compatible --model your-model-name
 ```
 
 ## 翻译风格
 
 ```powershell
-python .\tools\translate_ai.py .\input.md --style literal
-python .\tools\translate_ai.py .\input.md --style readable
-python .\tools\translate_ai.py .\input.md --style academic
-python .\tools\translate_ai.py .\input.md --style polished
+python .\translate_ai.py .\input.md --style literal
+python .\translate_ai.py .\input.md --style readable
+python .\translate_ai.py .\input.md --style academic
+python .\translate_ai.py .\input.md --style polished
 ```
 
 - `literal`：更贴原文
@@ -63,8 +63,8 @@ python .\tools\translate_ai.py .\input.md --style polished
 ## 翻译水准和目标语言
 
 ```powershell
-python .\tools\translate_ai.py .\input.md -o .\output.zh.md --target-lang 简体中文 --quality high
-python .\tools\translate_ai.py .\input.md -o .\output.zh.md --target-lang 繁体中文 --quality publishable
+python .\translate_ai.py .\input.md -o .\output.zh.md --target-lang 简体中文 --quality high
+python .\translate_ai.py .\input.md -o .\output.zh.md --target-lang 繁体中文 --quality publishable
 ```
 
 水准选项：
@@ -88,13 +88,13 @@ misrecognition = 误认
 调用：
 
 ```powershell
-python .\tools\translate_ai.py .\input.md -o .\output.zh.md --glossary-file .\glossary.md --style academic
+python .\translate_ai.py .\input.md -o .\output.zh.md --glossary-file .\glossary.md --style academic
 ```
 
 大词典也可以直接作为术语表传入。文件小于约 4000 字符时会整体注入；更大时会按当前分块自动匹配相关词条，并最多注入 `--glossary-limit` 条：
 
 ```powershell
-python .\tools\translate_ai.py .\paper.pdf -o .\paper.zh.md --glossary-file .\dictionary.tsv --glossary-limit 80
+python .\translate_ai.py .\paper.pdf -o .\paper.zh.md --glossary-file .\dictionary.tsv --glossary-limit 80
 ```
 
 支持格式：
@@ -126,7 +126,7 @@ source<TAB>target
 ## 大文件参数
 
 ```powershell
-python .\tools\translate_ai.py .\input.md -o .\output.zh.md --max-chars 4000 --context-chars 3000 --sleep 2 --retries 5
+python .\translate_ai.py .\input.md -o .\output.zh.md --max-chars 4000 --context-chars 3000 --sleep 2 --retries 5
 ```
 
 - `--max-chars`：每块最大字符数，越小越稳，越大越省请求次数
@@ -137,7 +137,7 @@ python .\tools\translate_ai.py .\input.md -o .\output.zh.md --max-chars 4000 --c
 ## PDF 输入
 
 ```powershell
-python .\tools\translate_ai.py .\paper.pdf -o .\paper.zh.md --pdf-engine auto --style academic --quality high
+python .\translate_ai.py .\paper.pdf -o .\paper.zh.md --pdf-engine auto --style academic --quality high
 ```
 
 PDF 提取方式：
@@ -173,7 +173,7 @@ Remove-Item -Recurse -Force .\.translate_cache
 ## 先测试分块而不调用 API
 
 ```powershell
-python .\tools\translate_ai.py .\input.md -o .\dryrun.md --dry-run
+python .\translate_ai.py .\input.md -o .\dryrun.md --dry-run
 ```
 
 ## 官方接口参考

@@ -3,6 +3,8 @@
 
 # Runtime/cache output
 .translate_cache/
+.venv/
+.mac_first_run_done
 __pycache__/
 *.py[cod]
 *$py.class
